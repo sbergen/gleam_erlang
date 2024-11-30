@@ -221,7 +221,7 @@ pub type ExitReason {
   /// The process was killed using `send_abnormal_exit`
   /// or by using Erlang's `exit` with a string value.
   Abnormal(reason: String)
-  /// The process died for some reason.
+  /// The process died for some reason not covered by the other variants.
   Unexpected(reason: Dynamic)
 }
 

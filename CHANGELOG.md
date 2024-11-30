@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- `send_abnormal_exit` no longer includes `Abnormal(...)` in the reason,
+  in order to be compatible with `selecting_trapped_exits`.
+- A new `ExitReason` variant `Unexpected(reason: Dynamic)` was added,
+  in order to avoid encoding unexpected exit reasons as strings.
+- `ProcessDown` and `CalleeDown` contain `ExitReason` instead of `Dynamic` as the reason.
+
 ## v0.32.0 - 2024-11-28
 
 - The `gleam/os` environment functions have been deprecated in favour of the
