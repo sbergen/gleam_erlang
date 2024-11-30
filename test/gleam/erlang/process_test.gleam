@@ -545,7 +545,7 @@ pub fn merge_selector_test() {
   let assert #("b", 2) = process.select_forever(selector)
 }
 
-pub fn selecting_trapped_exits_test() {
+pub fn selecting_trapped_exits_kill_test() {
   process.flush_messages()
 
   process.trap_exits(True)
@@ -558,6 +558,57 @@ pub fn selecting_trapped_exits_test() {
     |> process.select(10)
 
   let assert True = pid == exited
+}
+
+pub fn selecting_trapped_exits_panic_test() {
+  process.flush_messages()
+
+  process.trap_exits(True)
+  let exits =
+    process.new_selector()
+    |> process.selecting_trapped_exits(function.identity)
+
+  let pid = process.start(linked: True, running: fn() { panic as "reason" })
+
+  let assert Ok(process.ExitMessage(exited, process.Abnormal(reason))) =
+    process.select(exits, 10)
+  let assert Ok(error) = reason |> process.decode_gleam_error()
+  error.message |> should.equal("reason")
+  error.module |> should.equal("gleam/erlang/process_test")
+  error.function |> should.equal("selecting_trapped_exits_panic_test")
+  error.line |> should.not_equal(0)
+
+  let assert True = pid == exited
+}
+
+pub fn monitor_panic_test() {
+  // Spawn child
+  let parent_subject = process.new_subject()
+  let pid =
+    process.start(linked: False, running: fn() {
+      let subject = process.new_subject()
+      process.send(parent_subject, subject)
+      // Wait for the parent to send a message before panicking
+      let assert Ok(Nil) = process.receive(subject, 150)
+      panic as "reason"
+    })
+
+  // Monitor child
+  let monitor = process.monitor_process(pid)
+  let selector =
+    process.new_selector()
+    |> process.selecting_process_down(monitor, fn(x) { x })
+
+  // Trigger panic in child
+  let assert Ok(child_subject) = process.receive(parent_subject, 50)
+  process.send(child_subject, Nil)
+
+  // We get a process down message!
+  let assert Ok(ProcessDown(downed_pid, reason)) = process.select(selector, 50)
+
+  let assert True = downed_pid == pid
+  let assert Ok(error) = reason |> process.decode_gleam_error()
+  error.message |> should.equal("reason")
 }
 
 pub fn flush_messages_test() {

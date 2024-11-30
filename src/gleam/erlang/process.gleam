@@ -1,7 +1,6 @@
-import gleam/dynamic.{type DecodeErrors, type Dynamic}
+import gleam/dynamic.{type DecodeErrors, type Decoder, type Dynamic}
 import gleam/erlang.{type Reference}
 import gleam/erlang/atom.{type Atom}
-import gleam/string
 
 /// A `Pid` (or Process identifier) is a reference to an Erlang process. Each
 /// process has a `Pid` and it is one of the lowest level building blocks of
@@ -217,9 +216,48 @@ pub type ExitMessage {
 }
 
 pub type ExitReason {
+  /// The process exited normally
   Normal
+  /// The process was killed
   Killed
-  Abnormal(reason: String)
+  /// The process exited because of a runtime error.
+  /// Using `panic as "reason"` will exit the process with a value that
+  /// can be converted into a `GleamError`, using `as_gleam_error`
+  /// with `"reason"` as the `message`.
+  Abnormal(reason: Dynamic)
+}
+
+/// Represents a runtime error originating from Gleam code,
+/// for example as the result of a `panic`.
+pub type GleamError {
+  GleamError(
+    // TODO: I can't figure out how to decode an Atom :)
+    //error_type: Atom,
+    message: String,
+    module: String,
+    function: String,
+    line: Int,
+  )
+}
+
+/// Decoder for dynamic values,
+/// as present in `Abnormal` and `ProcessDown`, into `GleamError`.
+pub fn decode_gleam_error() -> Decoder(GleamError) {
+  let assert Ok(message) = atom.from_string("message")
+  let assert Ok(module) = atom.from_string("module")
+  let assert Ok(function) = atom.from_string("function")
+  let assert Ok(line) = atom.from_string("line")
+
+  dynamic.element(
+    0,
+    dynamic.decode4(
+      GleamError,
+      dynamic.field(message, dynamic.string),
+      dynamic.field(module, dynamic.string),
+      dynamic.field(function, dynamic.string),
+      dynamic.field(line, dynamic.int),
+    ),
+  )
 }
 
 /// Add a handler for trapped exit messages. In order for these messages to be
@@ -235,11 +273,10 @@ pub fn selecting_trapped_exits(
     let reason = message.2
     let normal = dynamic.from(Normal)
     let killed = dynamic.from(Killed)
-    let reason = case dynamic.string(reason) {
-      _ if reason == normal -> Normal
-      _ if reason == killed -> Killed
-      Ok(reason) -> Abnormal(reason)
-      Error(_) -> Abnormal(string.inspect(reason))
+    let reason = case reason == normal, reason == killed {
+      True, _ -> Normal
+      _, True -> Killed
+      _, _ -> Abnormal(reason)
     }
     handler(ExitMessage(message.1, reason))
   }
@@ -786,8 +823,8 @@ pub fn send_exit(to pid: Pid) -> Nil {
 ///
 /// [1]: http://erlang.org/doc/man/erlang.html#exit-2
 ///
-pub fn send_abnormal_exit(pid: Pid, reason: String) -> Nil {
-  erlang_send_exit(pid, Abnormal(reason))
+pub fn send_abnormal_exit(pid: Pid, reason: a) -> Nil {
+  erlang_send_exit(pid, Abnormal(dynamic.from(reason)))
   Nil
 }
 
