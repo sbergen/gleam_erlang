@@ -98,6 +98,29 @@ pub fn selector_test() {
 }
 
 pub fn monitor_normal_exit_test() {
+  monitor_process_exit(fn() { Nil })
+  |> should.equal(process.Normal)
+}
+
+pub fn monitor_killed_test() {
+  monitor_process_exit(fn() { process.kill(process.self()) })
+  |> should.equal(process.Killed)
+}
+
+pub fn monitor_unexpected_exit_test() {
+  let assert process.Unexpected(_) = monitor_process_exit(fn() { panic })
+}
+
+pub fn monitor_abnormal_exit_test() {
+  monitor_process_exit(fn() {
+    process.send_abnormal_exit(process.self(), "reason")
+  })
+  |> should.equal(process.Abnormal("reason"))
+}
+
+/// Spawns a child, monitors exits, runs `terminating_with` in the child,
+/// checks that a `ProcessDown` is received, and finally returns the exit reason.
+fn monitor_process_exit(terminating_with: fn() -> Nil) -> process.ExitReason {
   // Spawn child
   let parent_subject = process.new_subject()
   let pid =
@@ -105,38 +128,8 @@ pub fn monitor_normal_exit_test() {
       let subject = process.new_subject()
       process.send(parent_subject, subject)
       // Wait for the parent to send a message before exiting
-      process.receive(subject, 150)
-    })
-
-  // Monitor child
-  let monitor = process.monitor_process(pid)
-  let selector =
-    process.new_selector()
-    |> process.selecting_process_down(monitor, fn(x) { x })
-
-  // There is no monitor message while the child is alive
-  let assert Error(Nil) = process.select(selector, 0)
-
-  // Shutdown child to trigger monitor
-  let assert Ok(child_subject) = process.receive(parent_subject, 50)
-  process.send(child_subject, Nil)
-
-  // We get a process down message!
-  let assert Ok(ProcessDown(downed_pid, reason)) = process.select(selector, 50)
-  reason |> should.equal(process.Normal)
-  let assert True = downed_pid == pid
-}
-
-pub fn monitor_unexpected_exit_test() {
-  // Spawn child
-  let parent_subject = process.new_subject()
-  let pid =
-    process.start(linked: False, running: fn() {
-      let subject = process.new_subject()
-      process.send(parent_subject, subject)
-      // Wait for the parent to send a message before panicking
       let assert Ok(_) = process.receive(subject, 150)
-      panic
+      terminating_with()
     })
 
   // Monitor child
@@ -148,58 +141,15 @@ pub fn monitor_unexpected_exit_test() {
   // There is no monitor message while the child is alive
   let assert Error(Nil) = process.select(selector, 0)
 
-  // Shutdown child to trigger monitor
+  // Terminate child to trigger monitor
   let assert Ok(child_subject) = process.receive(parent_subject, 50)
   process.send(child_subject, Nil)
 
   // We get a process down message!
-  let assert Ok(ProcessDown(downed_pid, process.Unexpected(_reason))) =
-    process.select(selector, 50)
-  let assert True = downed_pid == pid
-}
-
-pub fn monitor_killed_test() {
-  // Spawn child
-  let pid = process.start(linked: False, running: fn() { process.sleep(100) })
-
-  // Monitor child
-  let monitor = process.monitor_process(pid)
-  let selector =
-    process.new_selector()
-    |> process.selecting_process_down(monitor, fn(x) { x })
-
-  // There is no monitor message while the child is alive
-  let assert Error(Nil) = process.select(selector, 0)
-
-  // Kill child to trigger monitor
-  process.kill(pid)
-
-  // We get a process down message!
   let assert Ok(ProcessDown(downed_pid, reason)) = process.select(selector, 50)
-  reason |> should.equal(process.Killed)
   let assert True = downed_pid == pid
-}
 
-pub fn monitor_abnormal_exit_test() {
-  // Spawn child
-  let pid = process.start(linked: False, running: fn() { process.sleep(100) })
-
-  // Monitor child
-  let monitor = process.monitor_process(pid)
-  let selector =
-    process.new_selector()
-    |> process.selecting_process_down(monitor, fn(x) { x })
-
-  // There is no monitor message while the child is alive
-  let assert Error(Nil) = process.select(selector, 0)
-
-  // Kill child to trigger monitor
-  process.send_abnormal_exit(pid, "reason")
-
-  // We get a process down message!
-  let assert Ok(ProcessDown(downed_pid, reason)) = process.select(selector, 50)
-  reason |> should.equal(process.Abnormal("reason"))
-  let assert True = downed_pid == pid
+  reason
 }
 
 pub fn demonitor_test() {
@@ -621,49 +571,39 @@ pub fn merge_selector_test() {
 }
 
 pub fn selecting_trapped_exits_kill_test() {
-  process.flush_messages()
-
-  process.trap_exits(True)
-  let pid = process.start(linked: True, running: fn() { process.sleep(100) })
-  process.kill(pid)
-
-  let assert Ok(process.ExitMessage(exited, process.Killed)) =
-    process.new_selector()
-    |> process.selecting_trapped_exits(function.identity)
-    |> process.select(10)
-
-  let assert True = pid == exited
+  selecting_trapped_exits(fn() { process.kill(process.self()) })
+  |> should.equal(process.Killed)
 }
 
 pub fn selecting_trapped_exits_abnormal_test() {
-  process.flush_messages()
-
-  process.trap_exits(True)
-  let pid = process.start(linked: True, running: fn() { process.sleep(100) })
-  process.send_abnormal_exit(pid, "reason")
-
-  let assert Ok(process.ExitMessage(exited, process.Abnormal(reason))) =
-    process.new_selector()
-    |> process.selecting_trapped_exits(function.identity)
-    |> process.select(10)
-
-  reason |> should.equal("reason")
-  let assert True = pid == exited
+  selecting_trapped_exits(fn() {
+    process.send_abnormal_exit(process.self(), "reason")
+  })
+  |> should.equal(process.Abnormal("reason"))
 }
 
 pub fn selecting_trapped_exits_unexpected_test() {
+  let assert process.Unexpected(_reason) =
+    selecting_trapped_exits(fn() { panic })
+}
+
+/// Traps exits, starts a linked child, runs `terminating_with` in the child,
+/// expects an `ExitMessage`, and returns the exit reason
+pub fn selecting_trapped_exits(
+  terminating_with: fn() -> Nil,
+) -> process.ExitReason {
   process.flush_messages()
 
   process.trap_exits(True)
   let exits =
     process.new_selector()
     |> process.selecting_trapped_exits(function.identity)
-  let pid = process.start(linked: True, running: fn() { panic })
+  let pid = process.start(linked: True, running: terminating_with)
 
-  let assert Ok(process.ExitMessage(exited, process.Unexpected(_))) =
-    process.select(exits, 10)
-
+  let assert Ok(process.ExitMessage(exited, reason)) = process.select(exits, 10)
   let assert True = pid == exited
+
+  reason
 }
 
 pub fn flush_messages_test() {
