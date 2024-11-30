@@ -218,7 +218,10 @@ pub type ExitMessage {
 pub type ExitReason {
   Normal
   Killed
+  /// The process was killed using `send_abnormal_exit`
+  /// or by using Erlang's `exit` with a string value.
   Abnormal(reason: String)
+  /// The process died for some reason.
   Unexpected(reason: Dynamic)
 }
 
@@ -232,18 +235,21 @@ pub fn selecting_trapped_exits(
 ) -> Selector(a) {
   let tag = atom.create_from_string("EXIT")
   let handler = fn(message: #(Atom, Pid, Dynamic)) -> a {
-    let reason = message.2
-    let normal = dynamic.from(Normal)
-    let killed = dynamic.from(Killed)
-    let reason = case dynamic.string(reason) {
-      _ if reason == normal -> Normal
-      _ if reason == killed -> Killed
-      Ok(reason) -> Abnormal(reason)
-      Error(_) -> Unexpected(reason)
-    }
+    let reason = decode_exit_reason(message.2)
     handler(ExitMessage(message.1, reason))
   }
   insert_selector_handler(selector, #(tag, 3), handler)
+}
+
+fn decode_exit_reason(reason: Dynamic) -> ExitReason {
+  let normal = dynamic.from(Normal)
+  let killed = dynamic.from(Killed)
+  case dynamic.string(reason) {
+    _ if reason == normal -> Normal
+    _ if reason == killed -> Killed
+    Ok(reason) -> Abnormal(reason)
+    Error(_) -> Unexpected(reason)
+  }
 }
 
 // TODO: implement in Gleam
@@ -508,7 +514,7 @@ pub opaque type ProcessMonitor {
 /// A message received when a monitored process exits.
 ///
 pub type ProcessDown {
-  ProcessDown(pid: Pid, reason: Dynamic)
+  ProcessDown(pid: Pid, reason: ExitReason)
 }
 
 /// Start monitoring a process so that when the monitored process exits a
@@ -539,7 +545,11 @@ pub fn selecting_process_down(
   monitor: ProcessMonitor,
   mapping: fn(ProcessDown) -> payload,
 ) -> Selector(payload) {
-  insert_selector_handler(selector, monitor.tag, mapping)
+  let handler = fn(message: #(Atom, Pid, Dynamic)) -> payload {
+    let reason = decode_exit_reason(message.2)
+    mapping(ProcessDown(message.1, reason))
+  }
+  insert_selector_handler(selector, monitor.tag, handler)
 }
 
 /// Remove the monitor for a process so that when the monitor process exits a
@@ -556,7 +566,7 @@ pub fn demonitor_process(monitor monitor: ProcessMonitor) -> Nil
 pub type CallError(msg) {
   /// The process being called exited before it sent a response.
   ///
-  CalleeDown(reason: Dynamic)
+  CalleeDown(reason: ExitReason)
 
   /// The process being called did not response within the permitted amount of
   /// time.

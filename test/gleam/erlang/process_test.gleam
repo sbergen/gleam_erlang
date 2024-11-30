@@ -97,7 +97,7 @@ pub fn selector_test() {
   let assert Error(Nil) = process.select(selector, 0)
 }
 
-pub fn monitor_test() {
+pub fn monitor_normal_exit_test() {
   // Spawn child
   let parent_subject = process.new_subject()
   let pid =
@@ -122,8 +122,83 @@ pub fn monitor_test() {
   process.send(child_subject, Nil)
 
   // We get a process down message!
-  let assert Ok(ProcessDown(downed_pid, _reason)) = process.select(selector, 50)
+  let assert Ok(ProcessDown(downed_pid, reason)) = process.select(selector, 50)
+  reason |> should.equal(process.Normal)
+  let assert True = downed_pid == pid
+}
 
+pub fn monitor_unexpected_exit_test() {
+  // Spawn child
+  let parent_subject = process.new_subject()
+  let pid =
+    process.start(linked: False, running: fn() {
+      let subject = process.new_subject()
+      process.send(parent_subject, subject)
+      // Wait for the parent to send a message before panicking
+      let assert Ok(_) = process.receive(subject, 150)
+      panic
+    })
+
+  // Monitor child
+  let monitor = process.monitor_process(pid)
+  let selector =
+    process.new_selector()
+    |> process.selecting_process_down(monitor, fn(x) { x })
+
+  // There is no monitor message while the child is alive
+  let assert Error(Nil) = process.select(selector, 0)
+
+  // Shutdown child to trigger monitor
+  let assert Ok(child_subject) = process.receive(parent_subject, 50)
+  process.send(child_subject, Nil)
+
+  // We get a process down message!
+  let assert Ok(ProcessDown(downed_pid, process.Unexpected(_reason))) =
+    process.select(selector, 50)
+  let assert True = downed_pid == pid
+}
+
+pub fn monitor_killed_test() {
+  // Spawn child
+  let pid = process.start(linked: False, running: fn() { process.sleep(100) })
+
+  // Monitor child
+  let monitor = process.monitor_process(pid)
+  let selector =
+    process.new_selector()
+    |> process.selecting_process_down(monitor, fn(x) { x })
+
+  // There is no monitor message while the child is alive
+  let assert Error(Nil) = process.select(selector, 0)
+
+  // Kill child to trigger monitor
+  process.kill(pid)
+
+  // We get a process down message!
+  let assert Ok(ProcessDown(downed_pid, reason)) = process.select(selector, 50)
+  reason |> should.equal(process.Killed)
+  let assert True = downed_pid == pid
+}
+
+pub fn monitor_abnormal_exit_test() {
+  // Spawn child
+  let pid = process.start(linked: False, running: fn() { process.sleep(100) })
+
+  // Monitor child
+  let monitor = process.monitor_process(pid)
+  let selector =
+    process.new_selector()
+    |> process.selecting_process_down(monitor, fn(x) { x })
+
+  // There is no monitor message while the child is alive
+  let assert Error(Nil) = process.select(selector, 0)
+
+  // Kill child to trigger monitor
+  process.send_abnormal_exit(pid, "reason")
+
+  // We get a process down message!
+  let assert Ok(ProcessDown(downed_pid, reason)) = process.select(selector, 50)
+  reason |> should.equal(process.Abnormal("reason"))
   let assert True = downed_pid == pid
 }
 
