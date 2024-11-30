@@ -1,7 +1,6 @@
 import gleam/dynamic.{type DecodeErrors, type Dynamic}
 import gleam/erlang.{type Reference}
 import gleam/erlang/atom.{type Atom}
-import gleam/string
 
 /// A `Pid` (or Process identifier) is a reference to an Erlang process. Each
 /// process has a `Pid` and it is one of the lowest level building blocks of
@@ -220,6 +219,7 @@ pub type ExitReason {
   Normal
   Killed
   Abnormal(reason: String)
+  Unexpected(reason: Dynamic)
 }
 
 /// Add a handler for trapped exit messages. In order for these messages to be
@@ -239,7 +239,7 @@ pub fn selecting_trapped_exits(
       _ if reason == normal -> Normal
       _ if reason == killed -> Killed
       Ok(reason) -> Abnormal(reason)
-      Error(_) -> Abnormal(string.inspect(reason))
+      Error(_) -> Unexpected(reason)
     }
     handler(ExitMessage(message.1, reason))
   }
@@ -787,7 +787,7 @@ pub fn send_exit(to pid: Pid) -> Nil {
 /// [1]: http://erlang.org/doc/man/erlang.html#exit-2
 ///
 pub fn send_abnormal_exit(pid: Pid, reason: String) -> Nil {
-  erlang_send_exit(pid, Abnormal(reason))
+  erlang_send_exit(pid, reason)
   Nil
 }
 

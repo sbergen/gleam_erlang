@@ -545,7 +545,7 @@ pub fn merge_selector_test() {
   let assert #("b", 2) = process.select_forever(selector)
 }
 
-pub fn selecting_trapped_exits_test() {
+pub fn selecting_trapped_exits_kill_test() {
   process.flush_messages()
 
   process.trap_exits(True)
@@ -556,6 +556,37 @@ pub fn selecting_trapped_exits_test() {
     process.new_selector()
     |> process.selecting_trapped_exits(function.identity)
     |> process.select(10)
+
+  let assert True = pid == exited
+}
+
+pub fn selecting_trapped_exits_abnormal_test() {
+  process.flush_messages()
+
+  process.trap_exits(True)
+  let pid = process.start(linked: True, running: fn() { process.sleep(100) })
+  process.send_abnormal_exit(pid, "reason")
+
+  let assert Ok(process.ExitMessage(exited, process.Abnormal(reason))) =
+    process.new_selector()
+    |> process.selecting_trapped_exits(function.identity)
+    |> process.select(10)
+
+  reason |> should.equal("reason")
+  let assert True = pid == exited
+}
+
+pub fn selecting_trapped_exits_unexpected_test() {
+  process.flush_messages()
+
+  process.trap_exits(True)
+  let exits =
+    process.new_selector()
+    |> process.selecting_trapped_exits(function.identity)
+  let pid = process.start(linked: True, running: fn() { panic })
+
+  let assert Ok(process.ExitMessage(exited, process.Unexpected(_))) =
+    process.select(exits, 10)
 
   let assert True = pid == exited
 }
