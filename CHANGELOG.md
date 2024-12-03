@@ -2,10 +2,10 @@
 
 ## Unreleased
 
+- Change `process.Abnormal` to hold a `Dynamic` value instead of a `String`,
+  in order to avoid encoding exit reasons such as panics as strings.
 - `send_abnormal_exit` no longer includes `Abnormal(...)` in the reason,
-  in order to be compatible with `selecting_trapped_exits`.
-- A new `ExitReason` variant `Unexpected(reason: Dynamic)` was added,
-  in order to avoid encoding unexpected exit reasons as strings.
+  in order to be better compatible with `selecting_trapped_exits`.
 - `ProcessDown` and `CalleeDown` contain `ExitReason` instead of `Dynamic` as the reason.
 
 ## v0.32.0 - 2024-11-28

@@ -1,3 +1,4 @@
+import gleam/bool
 import gleam/dynamic.{type DecodeErrors, type Dynamic}
 import gleam/erlang.{type Reference}
 import gleam/erlang/atom.{type Atom}
@@ -218,11 +219,7 @@ pub type ExitMessage {
 pub type ExitReason {
   Normal
   Killed
-  /// The process was killed using `send_abnormal_exit`
-  /// or by using Erlang's `exit` with a string value.
-  Abnormal(reason: String)
-  /// The process died for some reason not covered by the other variants.
-  Unexpected(reason: Dynamic)
+  Abnormal(reason: Dynamic)
 }
 
 /// Add a handler for trapped exit messages. In order for these messages to be
@@ -244,12 +241,10 @@ pub fn selecting_trapped_exits(
 fn decode_exit_reason(reason: Dynamic) -> ExitReason {
   let normal = dynamic.from(Normal)
   let killed = dynamic.from(Killed)
-  case dynamic.string(reason) {
-    _ if reason == normal -> Normal
-    _ if reason == killed -> Killed
-    Ok(reason) -> Abnormal(reason)
-    Error(_) -> Unexpected(reason)
-  }
+
+  use <- bool.guard(reason == normal, Normal)
+  use <- bool.guard(reason == killed, Killed)
+  Abnormal(reason)
 }
 
 // TODO: implement in Gleam

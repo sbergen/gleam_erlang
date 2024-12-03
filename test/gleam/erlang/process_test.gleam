@@ -107,16 +107,11 @@ pub fn monitor_killed_test() {
   |> should.equal(process.Killed)
 }
 
-pub fn monitor_unexpected_exit_test() {
-  let assert process.Unexpected(_) =
-    monitor_process_exit(exit_with_unexpected_value)
-}
-
 pub fn monitor_abnormal_exit_test() {
   monitor_process_exit(fn() {
     process.send_abnormal_exit(process.self(), "reason")
   })
-  |> should.equal(process.Abnormal("reason"))
+  |> should.equal(process.Abnormal(dynamic.from("reason")))
 }
 
 /// Spawns a child, monitors exits, runs `terminating_with` in the child,
@@ -580,12 +575,12 @@ pub fn selecting_trapped_exits_abnormal_test() {
   selecting_trapped_exits(fn() {
     process.send_abnormal_exit(process.self(), "reason")
   })
-  |> should.equal(process.Abnormal("reason"))
+  |> should.equal(process.Abnormal(dynamic.from("reason")))
 }
 
-pub fn selecting_trapped_exits_unexpected_test() {
-  let assert process.Unexpected(_reason) =
-    selecting_trapped_exits(exit_with_unexpected_value)
+pub fn selecting_trapped_exits_normal_test() {
+  selecting_trapped_exits(fn() { Nil })
+  |> should.equal(process.Normal)
 }
 
 /// Traps exits, starts a linked child, runs `terminating_with` in the child,
@@ -682,13 +677,3 @@ pub fn deselecting_test() {
   |> process.deselecting(subject2)
   |> should.equal(selector0)
 }
-
-/// Exits the current process with an unexpected (non-string) value.
-/// Panicking causes console spam, which is why we prefer this.
-fn exit_with_unexpected_value() -> Nil {
-  erlang_send_exit(process.self(), #("unexpected"))
-  Nil
-}
-
-@external(erlang, "erlang", "exit")
-fn erlang_send_exit(to to: process.Pid, because because: whatever) -> Bool
