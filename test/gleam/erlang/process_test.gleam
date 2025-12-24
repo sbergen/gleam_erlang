@@ -14,7 +14,7 @@ fn unsafe_coerce(a: dynamic.Dynamic) -> anything
 
 pub fn mapped_name_test() {
   let #(name1, name2, compound_name) =
-    process.new_name2("test", int.to_string, float.to_string)
+    process.new_mapped_names2("test", int.to_string, float.to_string)
   let sync = process.new_subject()
 
   process.spawn(fn() {

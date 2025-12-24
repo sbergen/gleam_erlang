@@ -135,8 +135,13 @@ pub type Name(message)
 @external(erlang, "gleam_erlang_ffi", "new_name")
 pub fn new_name(prefix prefix: String) -> Name(message)
 
+/// Generates an associated set of names all referencing the same process,
+/// but using different types.
+/// When receiving from a named subject created from the third returned name,
+/// the message types from the two first names will be mapped to that type
+/// using the provided mapping functions, which are run in the receiving process.
 @external(erlang, "gleam_erlang_ffi", "new_name")
-pub fn new_name2(
+pub fn new_mapped_names2(
   prefix: String,
   map1: fn(a) -> c,
   map2: fn(b) -> c,
