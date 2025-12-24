@@ -12,26 +12,33 @@ import gleam/set
 @external(erlang, "gleam_erlang_ffi", "identity")
 fn unsafe_coerce(a: dynamic.Dynamic) -> anything
 
-pub fn compound_name_test() {
+pub fn mapped_name_test() {
   let #(name1, name2, compound_name) =
     process.new_name2("test", int.to_string, float.to_string)
-  let result = process.new_subject()
+  let sync = process.new_subject()
 
   process.spawn(fn() {
     assert process.register(process.self(), compound_name) == Ok(Nil)
+    process.send(sync, False)
+
     let subject = process.named_subject(compound_name)
 
+    // Expect the mapped messages
     assert process.receive(subject, 100) == Ok("1")
     assert process.receive(subject, 100) == Ok("2.0")
-    process.send(result, True)
+    assert process.receive(subject, 100) == Ok("3")
+    process.send(sync, True)
   })
 
-  process.spawn(fn() {
-    process.send(process.named_subject(name1), 1)
-    process.send(process.named_subject(name2), 2.0)
-  })
+  // Wait for name to be registered
+  assert process.receive(sync, 10) == Ok(False)
 
-  assert Ok(True) == process.receive(result, 100)
+  // Send the messages
+  process.send(process.named_subject(name1), 1)
+  process.send(process.named_subject(name2), 2.0)
+  process.send(process.named_subject(compound_name), "3")
+
+  assert process.receive(sync, 100) == Ok(True)
 }
 
 pub fn self_test() {
