@@ -4,7 +4,8 @@
     link/1, insert_selector_handler/3, remove_selector_handler/2, select/1,
     select/2, trap_exits/1, map_selector/2, merge_selector/2, flush_messages/0,
     priv_directory/1, connect_node/1, register_process/2, unregister_process/1,
-    process_named/1, identity/1, 'receive'/1, 'receive'/2, new_name/1,
+    process_named/1, identity/1, 'receive'/1, 'receive'/2, new_name/1, new_name/3,
+    send_to_name/3,
     cast_down_message/1, cast_exit_reason/1
 ]).
 
@@ -18,6 +19,18 @@ new_name(Prefix) ->
     Suffix = integer_to_binary(erlang:unique_integer([positive])),
     Name = <<Prefix/bits, "$"/utf8, Suffix/bits>>,
     binary_to_atom(Name).
+
+new_name(Prefix, Map1, Map2) ->
+  Name = new_name(Prefix),
+  Name1 = {Name, Map1 },
+  Name2 = {Name, Map2 },
+  {Name1, Name2, Name}.
+
+send_to_name(Pid, Name, Message) when is_atom(Name) ->
+  erlang:send(Pid, {Name, Message});
+send_to_name(Pid, Name, Message) ->
+  {ActualName, Map} = Name,
+  erlang:send(Pid, {ActualName, Map(Message)}).
 
 sleep(Microseconds) ->
     timer:sleep(Microseconds),
@@ -154,11 +167,14 @@ unregister_process(Name) ->
         error:badarg -> {error, nil}
     end.
 
-process_named(Name) ->
+process_named(Name) when is_atom(Name) ->
     case erlang:whereis(Name) of
         Pid when is_pid(Pid) -> {ok, Pid};
         _ -> {error, nil}
-    end.
+    end;
+process_named(Name) ->
+  {ActualName, _} = Name,
+  process_named(ActualName).
 
 identity(X) ->
     X.

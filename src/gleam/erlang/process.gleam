@@ -135,6 +135,13 @@ pub type Name(message)
 @external(erlang, "gleam_erlang_ffi", "new_name")
 pub fn new_name(prefix prefix: String) -> Name(message)
 
+@external(erlang, "gleam_erlang_ffi", "new_name")
+pub fn new_name2(
+  prefix: String,
+  map1: fn(a) -> c,
+  map2: fn(b) -> c,
+) -> #(Name(a), Name(b), Name(c))
+
 /// Create a subject for a name, which can be used to send and receive messages.
 ///
 /// All subjects created for the same name behave identically and can be used
@@ -177,6 +184,9 @@ type DoNotLeak
 @external(erlang, "erlang", "send")
 fn raw_send(a: Pid, b: message) -> DoNotLeak
 
+@external(erlang, "gleam_erlang_ffi", "send_to_name")
+fn send_to_name(pid: Pid, name: Name(msg), messgae: msg) -> DoNotLeak
+
 /// Send a message to a process using a `Subject`. The message must be of the
 /// type that the `Subject` accepts.
 ///
@@ -213,7 +223,7 @@ pub fn send(subject: Subject(message), message: message) -> Nil {
     }
     NamedSubject(name) -> {
       let assert Ok(pid) = named(name) as "Sending to unregistered name"
-      raw_send(pid, #(name, message))
+      send_to_name(pid, name, message)
     }
   }
   Nil

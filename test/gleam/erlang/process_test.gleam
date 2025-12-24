@@ -12,6 +12,28 @@ import gleam/set
 @external(erlang, "gleam_erlang_ffi", "identity")
 fn unsafe_coerce(a: dynamic.Dynamic) -> anything
 
+pub fn compound_name_test() {
+  let #(name1, name2, compound_name) =
+    process.new_name2("test", int.to_string, float.to_string)
+  let result = process.new_subject()
+
+  process.spawn(fn() {
+    assert process.register(process.self(), compound_name) == Ok(Nil)
+    let subject = process.named_subject(compound_name)
+
+    assert process.receive(subject, 100) == Ok("1")
+    assert process.receive(subject, 100) == Ok("2.0")
+    process.send(result, True)
+  })
+
+  process.spawn(fn() {
+    process.send(process.named_subject(name1), 1)
+    process.send(process.named_subject(name2), 2.0)
+  })
+
+  assert Ok(True) == process.receive(result, 100)
+}
+
 pub fn self_test() {
   let subject = process.new_subject()
   let pid = process.self()
