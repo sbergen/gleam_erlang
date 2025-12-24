@@ -184,9 +184,6 @@ type DoNotLeak
 @external(erlang, "erlang", "send")
 fn raw_send(a: Pid, b: message) -> DoNotLeak
 
-@external(erlang, "gleam_erlang_ffi", "send_to_name")
-fn send_to_name(pid: Pid, name: Name(msg), messgae: msg) -> DoNotLeak
-
 /// Send a message to a process using a `Subject`. The message must be of the
 /// type that the `Subject` accepts.
 ///
@@ -223,7 +220,7 @@ pub fn send(subject: Subject(message), message: message) -> Nil {
     }
     NamedSubject(name) -> {
       let assert Ok(pid) = named(name) as "Sending to unregistered name"
-      send_to_name(pid, name, message)
+      raw_send(pid, #(name, message))
     }
   }
   Nil
